@@ -84,16 +84,25 @@ class Sorter:
         GPIO.setup(pin,GPIO.OUT)
         self.sorter = GPIO.PWM(pin,50)
         self.sorter.start(0)
+        self.flag = False
         
     def special(self):
         self.sorter.ChangeDutyCycle(2+(120/18))
         time.sleep(0.5)
         self.sorter.ChangeDutyCycle(0)
+        self.flag = True
         
     def normal(self):
         self.sorter.ChangeDutyCycle(2+(60/18))
         time.sleep(0.5)
         self.sorter.ChangeDutyCycle(0)
+        self.flag = True
+        
+    def get_flag(self):
+        return self.flag
+        
+    def reset_flag(self):
+        self.flag = False
 
 
 
@@ -109,7 +118,8 @@ class GUI(Frame):
         self.sorter = sorter
         self.exit = False
         self.coins = 0
-        self.path = "/home/pi/Documents/thesis/Pictures/"
+        self.path1 = "/home/pi/Documents/thesis/Pictures1/"
+        self.path2 = "/home/pi/Documents/thesis/Pictures2/"
         self.video = False
         self.coin_label = Label(self)
         self.coin_label["text"] = "Click START button to start"
@@ -119,8 +129,11 @@ class GUI(Frame):
     def start(self):
         self.exit = False
         self.t1 = threading.Thread(target=self.find_coin1)
+        self.t2 = threading.Thread(target=self.find_coin2)
         self.t1.setDaemon(True)
+        self.t2.setDaemon(True)
         self.t1.start()
+        self.t2.start()
         
     def finish(self):
         self.exit = True
@@ -170,9 +183,9 @@ class GUI(Frame):
             if state == "Waiting for Coin":
                 if res:
                     count += 1
-                    if count > 6:
+                    if count > 5:
                         state = "Coin under Cam"
-                        cv2.imwrite(self.path + "coin-" + str(self.coins) + '-' +
+                        cv2.imwrite(self.path1 + "coin-" + str(self.coins) + '-' +
                                     time.strftime("%d-%m-%Y-%H-%M-%S") + ".jpg", rof)
                         self.feeder.stop()
                         count = 0
@@ -181,14 +194,14 @@ class GUI(Frame):
             elif state == "Coin under Cam":
                 if not res:
                     count += 1
-                    if count > 6:
-                        self.coins += 1
+                    if count > 5:
+                        #self.coins += 1
                         state = "Waiting for Coin"
-                        self.feeder.start()
+                        #self.feeder.start()
                         count = 0
                 else:
                     count = 0
-            self.coin_label.config(text=state+' '+str(self.coins))
+            #self.coin_label.config(text=state+' '+str(self.coins))
             if self.video:
                 cv2.imshow('Cam 1', rof)
             cv2.waitKey(10)
@@ -202,36 +215,43 @@ class GUI(Frame):
         
     def find_coin2(self):
         cap2 = cv2.VideoCapture(1)
+        count = 0
+        state = "Waiting for Coin"
         while cap2.isOpened():
             if self.exit:
                 break
             (ref, frame) = cap2.read()
-            rof = frame.copy()[60:470, 0:600]
-            #res = self.detect_circle(rof)
-            """
+            rof = frame.copy()
+            res = self.detect_circle(rof)
             if state == "Waiting for Coin":
                 if res:
                     count += 1
-                    if count > 6:
+                    if count > 5:
                         state = "Coin under Cam"
-                        cv2.imwrite(self.path + "coin-" + str(self.coins) + '-' +
+                        cv2.imwrite(self.path2 + "coin-" + str(self.coins) + '-' +
                                     time.strftime("%d-%m-%Y-%H-%M-%S") + ".jpg", rof)
                         self.feeder.stop()
+                        self.conveyor1.stop()
+                        self.conveyor2.stop()
                         count = 0
                 else:
                     count = 0
             elif state == "Coin under Cam":
-                if not res:
-                    count += 1
-                    if count > 6:
-                        self.coins += 1
-                        state = "Waiting for Coin"
-                        self.feeder.start()
+                if self.sorter.get_flag():
+                    self.conveyor2.start()
+                    if not res:
+                        count += 1
+                        if count > 5:
+                            self.coins += 1
+                            state = "Waiting for Coin"
+                            self.feeder.start()
+                            self.conveyor1.start()
+                            self.sorter.reset_flag()
+                            count = 0
+                    else:
                         count = 0
-                else:
-                    count = 0
+
             self.coin_label.config(text=state+' '+str(self.coins))
-            """
             if self.video:
                 cv2.imshow('Cam 2', rof)
             cv2.waitKey(10)
